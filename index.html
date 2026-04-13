@@ -40,6 +40,7 @@
       const [ltv1, setLtv1] = useState(80); // 單位：% (成數)
       const [years1, setYears1] = useState(30); // 單位：年
       const [grace1, setGrace1] = useState(3); // 單位：年 (寬限期)
+      const [isNewYouth1, setIsNewYouth1] = useState(false); // 新青安選項
 
       // State for Calculator 2 (By Monthly Payment)
       const [monthlyPayment, setMonthlyPayment] = useState(40000); // 單位：元
@@ -47,6 +48,7 @@
       const [ltv2, setLtv2] = useState(80); // 單位：% (成數)
       const [years2, setYears2] = useState(30); // 單位：年
       const [grace2, setGrace2] = useState(3); // 單位：年 (寬限期)
+      const [isNewYouth2, setIsNewYouth2] = useState(false); // 新青安選項
 
       // 安全的數字格式化工具
       const formatMoney = (num) => {
@@ -70,6 +72,21 @@
         }
       };
 
+      // 共用計算公式
+      const getMonthlyPMT = (principal, annualRate, months) => {
+        if (months <= 0) return 0;
+        if (annualRate === 0) return principal / months;
+        const r = annualRate / 100 / 12;
+        return (principal * r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1);
+      };
+
+      const getPrincipalFromPMT = (pmt, annualRate, months) => {
+        if (months <= 0) return 0;
+        if (annualRate === 0) return pmt * months;
+        const r = annualRate / 100 / 12;
+        return (pmt * (Math.pow(1 + r, months) - 1)) / (r * Math.pow(1 + r, months));
+      };
+
       // --- Calculations for Mode 1 (By Price) ---
       const safeTotalPrice = Number(totalPrice) || 0;
       const safeRate1 = Number(rate1) || 0;
@@ -79,15 +96,27 @@
       
       let gracePayment1 = 0;
       let normalPayment1 = 0;
+      let youthLoanAmount1 = 0;
+      let normalLoanAmount1 = loanAmount1;
       const normalMonths1 = (years1 - grace1) * 12;
       
       if (normalMonths1 > 0) { 
-        if (safeRate1 === 0) {
-          normalPayment1 = loanAmount1 / normalMonths1;
+        if (isNewYouth1) {
+          const youthLimit = 10000000;
+          const youthRate = 1.775;
+          youthLoanAmount1 = Math.min(loanAmount1, youthLimit);
+          normalLoanAmount1 = Math.max(0, loanAmount1 - youthLimit);
+          
+          gracePayment1 = (youthLoanAmount1 * youthRate / 100 / 12) + (normalLoanAmount1 * safeRate1 / 100 / 12);
+          normalPayment1 = getMonthlyPMT(youthLoanAmount1, youthRate, normalMonths1) + getMonthlyPMT(normalLoanAmount1, safeRate1, normalMonths1);
         } else {
-          const r1 = safeRate1 / 100 / 12;
-          gracePayment1 = loanAmount1 * r1;
-          normalPayment1 = (loanAmount1 * r1 * Math.pow(1 + r1, normalMonths1)) / (Math.pow(1 + r1, normalMonths1) - 1);
+          if (safeRate1 === 0) {
+            normalPayment1 = loanAmount1 / normalMonths1;
+          } else {
+            const r1 = safeRate1 / 100 / 12;
+            gracePayment1 = loanAmount1 * r1;
+            normalPayment1 = getMonthlyPMT(loanAmount1, safeRate1, normalMonths1);
+          }
         }
       }
 
@@ -97,15 +126,34 @@
       
       let loanAmount2 = 0;
       let gracePayment2 = 0;
+      let youthLoanAmount2 = 0;
+      let normalLoanAmount2 = 0;
       const normalMonths2 = (years2 - grace2) * 12;
 
       if (normalMonths2 > 0) { 
-        if (safeRate2 === 0) {
-          loanAmount2 = safeMonthlyPayment * normalMonths2;
+        if (isNewYouth2) {
+          const youthLimit = 10000000;
+          const youthRate = 1.775;
+          const maxYouthPMT = getMonthlyPMT(youthLimit, youthRate, normalMonths2);
+
+          if (safeMonthlyPayment <= maxYouthPMT) {
+            loanAmount2 = getPrincipalFromPMT(safeMonthlyPayment, youthRate, normalMonths2);
+            youthLoanAmount2 = loanAmount2;
+            gracePayment2 = loanAmount2 * youthRate / 100 / 12;
+          } else {
+            const remainingPMT = safeMonthlyPayment - maxYouthPMT;
+            normalLoanAmount2 = getPrincipalFromPMT(remainingPMT, safeRate2, normalMonths2);
+            youthLoanAmount2 = youthLimit;
+            loanAmount2 = youthLimit + normalLoanAmount2;
+            gracePayment2 = (youthLimit * youthRate / 100 / 12) + (normalLoanAmount2 * safeRate2 / 100 / 12);
+          }
         } else {
-          const r2 = safeRate2 / 100 / 12;
-          loanAmount2 = (safeMonthlyPayment * (Math.pow(1 + r2, normalMonths2) - 1)) / (r2 * Math.pow(1 + r2, normalMonths2));
-          gracePayment2 = loanAmount2 * r2;
+          if (safeRate2 === 0) {
+            loanAmount2 = safeMonthlyPayment * normalMonths2;
+          } else {
+            loanAmount2 = getPrincipalFromPMT(safeMonthlyPayment, safeRate2, normalMonths2);
+            gracePayment2 = loanAmount2 * safeRate2 / 100 / 12;
+          }
         }
       }
       
@@ -188,8 +236,22 @@
                     </div>
                   </div>
 
+                  <div className="flex items-center justify-between p-3 bg-blue-50/50 border border-blue-100 rounded-lg">
+                    <div>
+                      <span className="text-sm font-medium text-slate-800">套用「新青安」貸款</span>
+                      <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5">額度上限 1,000 萬，利率固定 1.775%</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" checked={isNewYouth1} onChange={(e) => setIsNewYouth1(e.target.checked)} className="sr-only peer" />
+                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
+                    </label>
+                  </div>
+
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">貸款利率 (%)</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      {isNewYouth1 ? '一般貸款利率 (%)' : '貸款利率 (%)'}
+                      {isNewYouth1 && <span className="text-[10px] text-slate-400 font-normal ml-1">*超過1000萬部分適用</span>}
+                    </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <Percent className="w-5 h-5 text-slate-400" />
@@ -296,7 +358,11 @@
                       <p className="text-lg sm:text-xl lg:text-2xl font-bold truncate">
                         {formatWan(loanAmount1)}<span className="text-xs sm:text-sm font-normal ml-1">萬元</span>
                       </p>
-                      <p className="text-[10px] sm:text-xs text-blue-200 mt-1 truncate">({formatMoney(loanAmount1)} 元)</p>
+                      {isNewYouth1 && loanAmount1 > 10000000 ? (
+                        <p className="text-[10px] sm:text-xs text-blue-200 mt-1 truncate">(含青安1000萬 + 一般{formatWan(normalLoanAmount1)}萬)</p>
+                      ) : (
+                        <p className="text-[10px] sm:text-xs text-blue-200 mt-1 truncate">({formatMoney(loanAmount1)} 元)</p>
+                      )}
                     </div>
                     
                     <div className="bg-white/10 p-3 sm:p-4 rounded-xl">
@@ -352,8 +418,22 @@
                     </div>
                   </div>
 
+                  <div className="flex items-center justify-between p-3 bg-emerald-50/50 border border-emerald-100 rounded-lg">
+                    <div>
+                      <span className="text-sm font-medium text-slate-800">套用「新青安」貸款</span>
+                      <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5">額度上限 1,000 萬，利率固定 1.775%</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" checked={isNewYouth2} onChange={(e) => setIsNewYouth2(e.target.checked)} className="sr-only peer" />
+                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                    </label>
+                  </div>
+
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">貸款利率 (%)</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      {isNewYouth2 ? '一般貸款利率 (%)' : '貸款利率 (%)'}
+                      {isNewYouth2 && <span className="text-[10px] text-slate-400 font-normal ml-1">*超過1000萬部分適用</span>}
+                    </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <Percent className="w-5 h-5 text-slate-400" />
@@ -435,7 +515,11 @@
                       <p className="text-lg sm:text-xl lg:text-2xl font-bold truncate">
                         {formatWan(loanAmount2)}<span className="text-xs sm:text-sm font-normal ml-1">萬元</span>
                       </p>
-                      <p className="text-[10px] sm:text-xs text-emerald-200 mt-1 truncate">({formatMoney(loanAmount2)} 元)</p>
+                      {isNewYouth2 && loanAmount2 > 10000000 ? (
+                        <p className="text-[10px] sm:text-xs text-emerald-200 mt-1 truncate">(含青安1000萬 + 一般{formatWan(normalLoanAmount2)}萬)</p>
+                      ) : (
+                        <p className="text-[10px] sm:text-xs text-emerald-200 mt-1 truncate">({formatMoney(loanAmount2)} 元)</p>
+                      )}
                     </div>
                     
                     <div className="bg-white/10 p-3 sm:p-4 rounded-xl">
