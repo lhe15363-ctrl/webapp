@@ -1,0 +1,444 @@
+import React, { useState } from 'react';
+import { Calculator, Home, Wallet, Percent, Calendar, DollarSign, PiggyBank, Hourglass } from 'lucide-react';
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState('byPrice');
+
+  // State for Calculator 1 (By Price)
+  const [totalPrice, setTotalPrice] = useState(1500); // 單位：萬
+  const [rate1, setRate1] = useState(2.5); // 單位：%
+  const [ltv1, setLtv1] = useState(80); // 單位：% (成數)
+  const [years1, setYears1] = useState(30); // 單位：年
+  const [grace1, setGrace1] = useState(3); // 單位：年 (寬限期)
+
+  // State for Calculator 2 (By Monthly Payment)
+  const [monthlyPayment, setMonthlyPayment] = useState(40000); // 單位：元
+  const [rate2, setRate2] = useState(2.5); // 單位：%
+  const [ltv2, setLtv2] = useState(80); // 單位：% (成數)
+  const [years2, setYears2] = useState(30); // 單位：年
+  const [grace2, setGrace2] = useState(3); // 單位：年 (寬限期)
+
+  // 安全的數字格式化工具
+  const formatMoney = (num) => {
+    if (typeof num !== 'number' || isNaN(num) || !isFinite(num) || num < 0) return '0';
+    return Math.round(num).toLocaleString('zh-TW');
+  };
+
+  const formatWan = (num) => {
+    if (typeof num !== 'number' || isNaN(num) || !isFinite(num) || num < 0) return '0';
+    return (num / 10000).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  };
+
+  // 安全的數字輸入處理
+  const handleNumberInput = (setter) => (e) => {
+    const val = e.target.value;
+    if (val === '') {
+      setter(''); 
+    } else {
+      const num = Number(val);
+      if (!isNaN(num) && num >= 0) setter(num);
+    }
+  };
+
+  // --- Calculations for Mode 1 (By Price) ---
+  const safeTotalPrice = Number(totalPrice) || 0;
+  const safeRate1 = Number(rate1) || 0;
+  
+  const loanAmount1 = (safeTotalPrice * 10000) * (ltv1 / 100);
+  const downPayment1 = (safeTotalPrice * 10000) - loanAmount1;
+  
+  let gracePayment1 = 0;
+  let normalPayment1 = 0;
+  const normalMonths1 = (years1 - grace1) * 12;
+  
+  if (normalMonths1 > 0) { 
+    if (safeRate1 === 0) {
+      normalPayment1 = loanAmount1 / normalMonths1;
+    } else {
+      const r1 = safeRate1 / 100 / 12;
+      gracePayment1 = loanAmount1 * r1;
+      normalPayment1 = (loanAmount1 * r1 * Math.pow(1 + r1, normalMonths1)) / (Math.pow(1 + r1, normalMonths1) - 1);
+    }
+  }
+
+  // --- Calculations for Mode 2 (By Monthly Payment) ---
+  const safeMonthlyPayment = Number(monthlyPayment) || 0;
+  const safeRate2 = Number(rate2) || 0;
+  
+  let loanAmount2 = 0;
+  let gracePayment2 = 0;
+  const normalMonths2 = (years2 - grace2) * 12;
+
+  if (normalMonths2 > 0) { 
+    if (safeRate2 === 0) {
+      loanAmount2 = safeMonthlyPayment * normalMonths2;
+    } else {
+      const r2 = safeRate2 / 100 / 12;
+      loanAmount2 = (safeMonthlyPayment * (Math.pow(1 + r2, normalMonths2) - 1)) / (r2 * Math.pow(1 + r2, normalMonths2));
+      gracePayment2 = loanAmount2 * r2;
+    }
+  }
+  
+  const calculatedTotalPrice2 = ltv2 > 0 ? loanAmount2 / (ltv2 / 100) : 0;
+  const downPayment2 = Math.max(0, calculatedTotalPrice2 - loanAmount2);
+
+  return (
+    <div className="min-h-screen bg-slate-50 p-3 sm:p-4 md:p-8 font-sans text-slate-800">
+      <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
+        
+        {/* Header */}
+        <div className="text-center space-y-1 sm:space-y-2 pt-2 sm:pt-0">
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 flex items-center justify-center gap-2">
+            <Home className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
+            雙向房貸試算表
+          </h1>
+          <p className="text-sm sm:text-base text-slate-500">包含寬限期功能，精準評估買房預算</p>
+        </div>
+
+        {/* Tabs - 確保小螢幕上文字不會過大 */}
+        <div className="flex rounded-xl bg-slate-200 p-1">
+          <button
+            onClick={() => setActiveTab('byPrice')}
+            className={`flex-1 py-3 px-2 text-xs sm:text-sm md:text-base rounded-lg font-medium transition-all truncate ${
+              activeTab === 'byPrice'
+                ? 'bg-white text-blue-600 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-300'
+            }`}
+          >
+            以「總房價」推算
+          </button>
+          <button
+            onClick={() => setActiveTab('byMonthly')}
+            className={`flex-1 py-3 px-2 text-xs sm:text-sm md:text-base rounded-lg font-medium transition-all truncate ${
+              activeTab === 'byMonthly'
+                ? 'bg-white text-blue-600 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-300'
+            }`}
+          >
+            以「月繳款」推算
+          </button>
+        </div>
+
+        {/* Calculator 1: By Price */}
+        {activeTab === 'byPrice' && (
+          <div className="grid lg:grid-cols-2 gap-4 sm:gap-6">
+            <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4 sm:space-y-5">
+              <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 mb-2 sm:mb-4">
+                <Calculator className="w-5 h-5 text-blue-500" />
+                輸入條件
+              </h2>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">總房價 (萬元)</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <DollarSign className="w-5 h-5 text-slate-400" />
+                  </div>
+                  {/* 加入 text-base 防止 iOS 縮放 */}
+                  <input
+                    type="number"
+                    min="0"
+                    value={totalPrice}
+                    onChange={handleNumberInput(setTotalPrice)}
+                    className="w-full pl-10 pr-4 py-2 text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                    placeholder="請輸入總房價"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">貸款成數 (%)</label>
+                <div className="relative flex items-center gap-3 sm:gap-4">
+                  <input
+                    type="range"
+                    min="10" max="100" step="5"
+                    value={ltv1}
+                    onChange={(e) => setLtv1(Number(e.target.value))}
+                    className="flex-1 min-w-0"
+                  />
+                  <span className="w-14 sm:w-16 text-center text-sm sm:text-base font-semibold bg-slate-100 py-1 rounded-md">{ltv1}%</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">貸款利率 (%)</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Percent className="w-5 h-5 text-slate-400" />
+                  </div>
+                  <input
+                    type="number"
+                    min="0" max="100" step="0.01"
+                    value={rate1}
+                    onChange={handleNumberInput(setRate1)}
+                    className="w-full pl-10 pr-4 py-2 text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* 手機板改為上下排列 (grid-cols-1)，平板以上並排 (sm:grid-cols-2) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">貸款年限</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Calendar className="w-4 h-4 text-slate-400" />
+                    </div>
+                    <select
+                      value={years1}
+                      onChange={(e) => setYears1(Number(e.target.value))}
+                      className="w-full pl-9 pr-2 py-2 text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none appearance-none bg-white"
+                    >
+                      <option value="20">20 年</option>
+                      <option value="30">30 年</option>
+                      <option value="40">40 年</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">寬限期</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Hourglass className="w-4 h-4 text-slate-400" />
+                    </div>
+                    <select
+                      value={grace1}
+                      onChange={(e) => setGrace1(Number(e.target.value))}
+                      className="w-full pl-9 pr-2 py-2 text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none appearance-none bg-white"
+                    >
+                      <option value="0">無寬限期</option>
+                      <option value="1">1 年</option>
+                      <option value="2">2 年</option>
+                      <option value="3">3 年</option>
+                      <option value="4">4 年</option>
+                      <option value="5">5 年</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-blue-600 text-white p-4 sm:p-6 rounded-2xl shadow-lg space-y-4 sm:space-y-5 flex flex-col justify-center">
+              <h2 className="text-lg sm:text-xl font-semibold opacity-90 text-center">計算結果</h2>
+              
+              <div className="bg-blue-700/50 p-3 sm:p-4 rounded-xl border border-blue-500/30 flex flex-col gap-2 sm:gap-3">
+                {grace1 > 0 ? (
+                  <>
+                    <div className="flex justify-between items-end border-b border-blue-500/50 pb-2 sm:pb-3">
+                      <div>
+                        <p className="text-blue-200 text-xs sm:text-sm mb-1 flex items-center gap-1">
+                          <Hourglass className="w-3 h-3 sm:w-4 sm:h-4" /> 前 {grace1} 年 (寬限期)
+                        </p>
+                        <p className="text-[10px] sm:text-xs text-blue-300">每月僅繳利息</p>
+                      </div>
+                      <p className="text-2xl sm:text-3xl font-bold truncate">
+                        <span className="text-sm sm:text-lg mr-1 font-normal">NT$</span>
+                        {formatMoney(gracePayment1)}
+                      </p>
+                    </div>
+                    <div className="flex justify-between items-end pt-1">
+                      <div>
+                        <p className="text-blue-100 text-xs sm:text-sm mb-1 flex items-center gap-1">
+                          <Calendar className="w-3 h-3 sm:w-4 sm:h-4" /> 第 {grace1 + 1} 年起
+                        </p>
+                        <p className="text-[10px] sm:text-xs text-blue-300">本息平均攤還</p>
+                      </div>
+                      <p className="text-2xl sm:text-3xl font-bold truncate">
+                        <span className="text-sm sm:text-lg mr-1 font-normal">NT$</span>
+                        {formatMoney(normalPayment1)}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-1 sm:py-2">
+                    <p className="text-blue-100 text-sm mb-1 flex justify-center items-center gap-2">
+                      <Calendar className="w-4 h-4" /> 每月應繳金額
+                    </p>
+                    <p className="text-3xl sm:text-4xl font-bold mt-1 sm:mt-2 truncate">
+                      <span className="text-xl sm:text-2xl mr-1 font-normal">NT$</span>
+                      {formatMoney(normalPayment1)}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                <div className="bg-white/10 p-3 sm:p-4 rounded-xl">
+                  <p className="text-blue-100 text-xs sm:text-sm mb-1 flex items-center gap-1 sm:gap-2">
+                    <Wallet className="w-3 h-3 sm:w-4 sm:h-4" /> 房貸總額
+                  </p>
+                  <p className="text-lg sm:text-xl lg:text-2xl font-bold truncate">
+                    {formatWan(loanAmount1)}<span className="text-xs sm:text-sm font-normal ml-1">萬元</span>
+                  </p>
+                  <p className="text-[10px] sm:text-xs text-blue-200 mt-1 truncate">({formatMoney(loanAmount1)} 元)</p>
+                </div>
+                
+                <div className="bg-white/10 p-3 sm:p-4 rounded-xl">
+                  <p className="text-blue-100 text-xs sm:text-sm mb-1 flex items-center gap-1 sm:gap-2">
+                    <PiggyBank className="w-3 h-3 sm:w-4 sm:h-4" /> 頭期款準備
+                  </p>
+                  <p className="text-lg sm:text-xl lg:text-2xl font-bold truncate">
+                    {formatWan(downPayment1)}<span className="text-xs sm:text-sm font-normal ml-1">萬元</span>
+                  </p>
+                  <p className="text-[10px] sm:text-xs text-blue-200 mt-1 truncate">({formatMoney(downPayment1)} 元)</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Calculator 2: By Monthly Payment */}
+        {activeTab === 'byMonthly' && (
+          <div className="grid lg:grid-cols-2 gap-4 sm:gap-6">
+            <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4 sm:space-y-5">
+              <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 mb-2 sm:mb-4">
+                <Calculator className="w-5 h-5 text-emerald-500" />
+                輸入條件
+              </h2>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  能負擔最高月繳款 (元) <span className="text-[10px] sm:text-xs text-slate-400 font-normal ml-1">*寬限期後</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <DollarSign className="w-5 h-5 text-slate-400" />
+                  </div>
+                  <input
+                    type="number"
+                    min="0" step="1000"
+                    value={monthlyPayment}
+                    onChange={handleNumberInput(setMonthlyPayment)}
+                    className="w-full pl-10 pr-4 py-2 text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">預計貸款成數 (%)</label>
+                <div className="relative flex items-center gap-3 sm:gap-4">
+                  <input
+                    type="range"
+                    min="10" max="100" step="5"
+                    value={ltv2}
+                    onChange={(e) => setLtv2(Number(e.target.value))}
+                    className="flex-1 accent-emerald-500 min-w-0"
+                  />
+                  <span className="w-14 sm:w-16 text-center text-sm sm:text-base font-semibold bg-slate-100 py-1 rounded-md">{ltv2}%</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">貸款利率 (%)</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Percent className="w-5 h-5 text-slate-400" />
+                  </div>
+                  <input
+                    type="number"
+                    min="0" max="100" step="0.01"
+                    value={rate2}
+                    onChange={handleNumberInput(setRate2)}
+                    className="w-full pl-10 pr-4 py-2 text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">貸款年限</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Calendar className="w-4 h-4 text-slate-400" />
+                    </div>
+                    <select
+                      value={years2}
+                      onChange={(e) => setYears2(Number(e.target.value))}
+                      className="w-full pl-9 pr-2 py-2 text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none appearance-none bg-white"
+                    >
+                      <option value="20">20 年</option>
+                      <option value="30">30 年</option>
+                      <option value="40">40 年</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">寬限期</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Hourglass className="w-4 h-4 text-slate-400" />
+                    </div>
+                    <select
+                      value={grace2}
+                      onChange={(e) => setGrace2(Number(e.target.value))}
+                      className="w-full pl-9 pr-2 py-2 text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none appearance-none bg-white"
+                    >
+                      <option value="0">無寬限期</option>
+                      <option value="1">1 年</option>
+                      <option value="2">2 年</option>
+                      <option value="3">3 年</option>
+                      <option value="4">4 年</option>
+                      <option value="5">5 年</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-emerald-600 text-white p-4 sm:p-6 rounded-2xl shadow-lg space-y-4 sm:space-y-5 flex flex-col justify-center">
+              <h2 className="text-lg sm:text-xl font-semibold opacity-90 text-center">計算結果</h2>
+              
+              <div className="bg-emerald-700/50 p-3 sm:p-4 rounded-xl border border-emerald-500/30">
+                <p className="text-emerald-100 text-sm mb-1 flex items-center gap-2">
+                  <Home className="w-4 h-4" /> 可購買總房價約
+                </p>
+                <p className="text-3xl sm:text-4xl font-bold text-center my-1 sm:my-2 truncate">
+                  {formatWan(calculatedTotalPrice2)}
+                  <span className="text-lg sm:text-xl font-normal ml-1 sm:ml-2">萬元</span>
+                </p>
+                {grace2 > 0 && (
+                  <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-emerald-500/50 flex flex-col sm:flex-row justify-between sm:items-center text-xs sm:text-sm gap-1">
+                    <span className="text-emerald-200">
+                      前 {grace2} 年寬限期每月只需繳:
+                    </span>
+                    <span className="font-bold text-base sm:text-lg">
+                      NT$ {formatMoney(gracePayment2)}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                <div className="bg-white/10 p-3 sm:p-4 rounded-xl">
+                  <p className="text-emerald-100 text-xs sm:text-sm mb-1 flex items-center gap-1 sm:gap-2">
+                    <Wallet className="w-3 h-3 sm:w-4 sm:h-4" /> 房貸總額
+                  </p>
+                  <p className="text-lg sm:text-xl lg:text-2xl font-bold truncate">
+                    {formatWan(loanAmount2)}<span className="text-xs sm:text-sm font-normal ml-1">萬元</span>
+                  </p>
+                  <p className="text-[10px] sm:text-xs text-emerald-200 mt-1 truncate">({formatMoney(loanAmount2)} 元)</p>
+                </div>
+                
+                <div className="bg-white/10 p-3 sm:p-4 rounded-xl">
+                  <p className="text-emerald-100 text-xs sm:text-sm mb-1 flex items-center gap-1 sm:gap-2">
+                    <PiggyBank className="w-3 h-3 sm:w-4 sm:h-4" /> 頭期款準備
+                  </p>
+                  <p className="text-lg sm:text-xl lg:text-2xl font-bold truncate">
+                    {formatWan(downPayment2)}<span className="text-xs sm:text-sm font-normal ml-1">萬元</span>
+                  </p>
+                  <p className="text-[10px] sm:text-xs text-emerald-200 mt-1 truncate">({formatMoney(downPayment2)} 元)</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="text-center text-xs sm:text-sm text-slate-400 mt-6 sm:mt-8 space-y-1 pb-4">
+          <p>註：此試算採本息平均攤還法計算，實際核貸金額與利率以各家銀行規定為準。</p>
+          <p>本工具所有運算皆於設備端執行，無資料外洩風險，請安心使用。</p>
+        </div>
+
+      </div>
+    </div>
+  );
+}
