@@ -74,53 +74,76 @@
             return x;
         }
 
-        function analyzeBeam(L, E, I, supports, loadParams) {
-            const Ne = 100; // 元素數量
-            const dx = L / Ne;
-            const nDof = (Ne + 1) * 2;
+        function analyzeBeam(L, E, I, supports, segments) {
+            // 1. 動態生成節點 (解決支承位置偏移的 BUG)
+            const validSupports = [...new Set(supports.filter(s => s >= 0 && s <= L))];
+            let keyPoints = [0, L, ...validSupports];
+            
+            segments.forEach(seg => {
+                keyPoints.push(seg.xa, seg.xb);
+            });
+            
+            // 加入均佈節點以確保圖形平滑 (約100等分)
+            for (let i = 1; i < 100; i++) {
+                keyPoints.push((L * i) / 100);
+            }
+            keyPoints.sort((a, b) => a - b);
+            
+            // 移除重複節點 (容差 1e-7)
+            let nodes = [];
+            for (let i = 0; i < keyPoints.length; i++) {
+                if (keyPoints[i] >= 0 && keyPoints[i] <= L) {
+                    if (i === 0 || keyPoints[i] - nodes[nodes.length - 1] > 1e-7) {
+                        nodes.push(keyPoints[i]);
+                    }
+                }
+            }
+
+            const Ne = nodes.length - 1; // 動態元素數量
+            const nDof = nodes.length * 2;
 
             let K = Array(nDof).fill(0).map(() => Array(nDof).fill(0));
             let F = Array(nDof).fill(0);
 
-            const ke = (E * I) / Math.pow(dx, 3);
-            const k_el = [
-                [12 * ke, 6 * dx * ke, -12 * ke, 6 * dx * ke],
-                [6 * dx * ke, 4 * dx * dx * ke, -6 * dx * ke, 2 * dx * dx * ke],
-                [-12 * ke, -6 * dx * ke, 12 * ke, -6 * dx * ke],
-                [6 * dx * ke, 2 * dx * dx * ke, -6 * dx * ke, 4 * dx * dx * ke]
-            ];
-
-            let { x1, q1, x2, q2 } = loadParams;
-            if (x1 > x2) {
-                [x1, x2] = [x2, x1];
-                [q1, q2] = [q2, q1];
-            }
-
-            const q_eval = (x) => {
-                if (x < x1 || x > x2) return 0;
-                if (Math.abs(x2 - x1) < 1e-7) return q1; 
-                return q1 + (q2 - q1) * (x - x1) / (x2 - x1);
+            const get_q = (x, lookRight) => {
+                let evalX = lookRight ? x + 1e-7 : x - 1e-7;
+                for (let seg of segments) {
+                    if (evalX >= seg.xa && evalX <= seg.xb) {
+                        return seg.qa + (seg.qb - seg.qa) * (x - seg.xa) / (seg.xb - seg.xa);
+                    }
+                }
+                return 0;
             };
 
             for (let i = 0; i < Ne; i++) {
-                const xa = i * dx;
-                const xb = (i + 1) * dx;
+                const xa = nodes[i];
+                const xb = nodes[i + 1];
+                const dx = xb - xa;
+                
                 const dofs = [2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 3];
                 
+                const ke = (E * I) / Math.pow(dx, 3);
+                const k_el = [
+                    [12 * ke, 6 * dx * ke, -12 * ke, 6 * dx * ke],
+                    [6 * dx * ke, 4 * dx * dx * ke, -6 * dx * ke, 2 * dx * dx * ke],
+                    [-12 * ke, -6 * dx * ke, 12 * ke, -6 * dx * ke],
+                    [6 * dx * ke, 2 * dx * dx * ke, -6 * dx * ke, 4 * dx * dx * ke]
+                ];
+
                 for (let r = 0; r < 4; r++) {
                     for (let c = 0; c < 4; c++) {
                         K[dofs[r]][dofs[c]] += k_el[r][c];
                     }
                 }
 
-                const qa = q_eval(xa);
-                const qm = q_eval((xa + xb) / 2);
-                const qb = q_eval(xb);
+                const qa = get_q(xa, true);
+                const qb = get_q(xb, false);
 
-                const f1 = (dx / 6) * (1 * qa + 4 * 0.5 * qm + 0 * qb);
-                const m1 = (dx / 6) * (0 * qa + 4 * 0.125 * dx * qm + 0 * qb);
-                const f2 = (dx / 6) * (0 * qa + 4 * 0.5 * qm + 1 * qb);
-                const m2 = (dx / 6) * (0 * qa + 4 * -0.125 * dx * qm + 0 * qb);
+                // 使用精確等效節點力積分公式 (針對變動長度與線性載重)
+                const f1 = (dx / 20) * (7 * qa + 3 * qb);
+                const m1 = (dx * dx / 60) * (3 * qa + 2 * qb);
+                const f2 = (dx / 20) * (3 * qa + 7 * qb);
+                const m2 = -(dx * dx / 60) * (2 * qa + 3 * qb);
 
                 F[2 * i] += f1;
                 F[2 * i + 1] += m1;
@@ -132,11 +155,22 @@
             let F_mod = [...F];
             let K_orig = K.map(row => [...row]); 
 
-            const validSupports = supports.filter(s => s >= 0 && s <= L);
-            const supportNodes = [...new Set(validSupports.map(pos => Math.max(0, Math.min(Ne, Math.round(pos / dx)))))];
+            // 精確對應：尋找支承對應的節點索引
+            const supportNodesIdx = validSupports.map(pos => {
+                let idx = 0;
+                let minDiff = Infinity;
+                for(let i = 0; i < nodes.length; i++){
+                    if(Math.abs(nodes[i] - pos) < minDiff) {
+                        minDiff = Math.abs(nodes[i] - pos);
+                        idx = i;
+                    }
+                }
+                return idx;
+            });
 
-            supportNodes.forEach(node => {
-                const dof = node * 2;
+            // 套用邊界條件 (支承)
+            supportNodesIdx.forEach(nodeIdx => {
+                const dof = nodeIdx * 2;
                 for (let j = 0; j < nDof; j++) K_mod[dof][j] = 0;
                 K_mod[dof][dof] = 1;
                 F_mod[dof] = 0;
@@ -152,19 +186,23 @@
                 R[i] = sum - F[i]; 
             }
 
-            const reactionResults = supportNodes.map(node => ({
-                x: node * dx,
-                force: R[node * 2]
+            const reactionResults = supportNodesIdx.map(nodeIdx => ({
+                x: nodes[nodeIdx],
+                force: R[nodeIdx * 2]
             })).filter(r => Math.abs(r.force) > 1e-10); 
 
             const getV = (x) => {
                 let v = 0;
                 reactionResults.forEach(r => { if (r.x <= x + 1e-7) v += r.force; });
-                if (x > x1) {
-                    const end_x = Math.min(x, x2);
-                    const L_int = end_x - x1;
-                    const q_end = q1 + (q2 - q1) * L_int / (x2 - x1 || 1);
-                    v += 0.5 * (q1 + q_end) * L_int;
+                for (let seg of segments) {
+                    if (x > seg.xa) {
+                        const end_x = Math.min(x, seg.xb);
+                        const L_int = end_x - seg.xa;
+                        if (L_int > 0) {
+                            const q_end = seg.qa + (seg.qb - seg.qa) * L_int / (seg.xb - seg.xa || 1);
+                            v += 0.5 * (seg.qa + q_end) * L_int;
+                        }
+                    }
                 }
                 return v;
             };
@@ -172,42 +210,59 @@
             const getM = (x) => {
                 let m = 0;
                 reactionResults.forEach(r => { if (r.x <= x + 1e-7) m += r.force * (x - r.x); });
-                if (x > x1) {
-                    const end_x = Math.min(x, x2);
-                    const L_int = end_x - x1;
-                    const q_end = q1 + (q2 - q1) * L_int / (x2 - x1 || 1);
-                    const area = 0.5 * (q1 + q_end) * L_int;
-                    const centroid_from_x1 = L_int > 0 ? (L_int / 3) * (q1 + 2 * q_end) / (q1 + q_end || 1) : 0;
-                    m += area * (x - (x1 + centroid_from_x1));
+                for (let seg of segments) {
+                    if (x > seg.xa) {
+                        const end_x = Math.min(x, seg.xb);
+                        const L_int = end_x - seg.xa;
+                        if (L_int > 0) {
+                            const q_end = seg.qa + (seg.qb - seg.qa) * L_int / (seg.xb - seg.xa || 1);
+                            const area = 0.5 * (seg.qa + q_end) * L_int;
+                            const centroid_from_xa = (seg.qa + q_end === 0) ? L_int / 2 : (L_int / 3) * (seg.qa + 2 * q_end) / (seg.qa + q_end);
+                            m += area * (x - (seg.xa + centroid_from_xa));
+                        }
+                    }
                 }
                 return m;
             };
 
             const getDispAndRot = (x) => {
-                if (x <= 0) return { v: U[0], theta: U[1] };
-                if (x >= L) return { v: U[Ne * 2], theta: U[Ne * 2 + 1] };
-                const idx = Math.floor(x / dx);
-                const xi = (x - idx * dx) / dx;
+                if (x <= 1e-7) return { v: U[0], theta: U[1] };
+                if (x >= L - 1e-7) return { v: U[(nodes.length - 1) * 2], theta: U[(nodes.length - 1) * 2 + 1] };
+                
+                let idx = 0;
+                for(let i=0; i<nodes.length - 1; i++) {
+                    if (x >= nodes[i] - 1e-7 && x <= nodes[i+1] + 1e-7) {
+                        idx = i;
+                        break;
+                    }
+                }
+                const xa = nodes[idx];
+                const xb = nodes[idx+1];
+                const dx = xb - xa;
+                
+                const xi = (x - xa) / dx;
                 const v1 = U[idx * 2], t1 = U[idx * 2 + 1];
                 const v2 = U[(idx + 1) * 2], t2 = U[(idx + 1) * 2 + 1];
-                const N1 = 1 - 3*xi*xi + 2*xi*xi*xi, N2 = dx * (xi - 2*xi*xi + xi*xi*xi);
-                const N3 = 3*xi*xi - 2*xi*xi*xi, N4 = dx * (xi*xi*xi - xi*xi);
-                const dN1 = (-6*xi + 6*xi*xi)/dx, dN2 = (1 - 4*xi + 3*xi*xi);
-                const dN3 = (6*xi - 6*xi*xi)/dx, dN4 = (3*xi*xi - 2*xi);
+                
+                const N1 = 1 - 3*xi*xi + 2*xi*xi*xi;
+                const N2 = dx * (xi - 2*xi*xi + xi*xi*xi);
+                const N3 = 3*xi*xi - 2*xi*xi*xi;
+                const N4 = dx * (xi*xi*xi - xi*xi);
+                
+                const dN1 = (-6*xi + 6*xi*xi)/dx;
+                const dN2 = (1 - 4*xi + 3*xi*xi);
+                const dN3 = (6*xi - 6*xi*xi)/dx;
+                const dN4 = (3*xi*xi - 2*xi);
+                
                 return { v: N1*v1 + N2*t1 + N3*v2 + N4*t2, theta: dN1*v1 + dN2*t1 + dN3*v2 + dN4*t2 };
             };
 
-            let keyPoints = [0, L, x1, x2, ...validSupports];
-            let dataXSet = new Set();
-            for (let i = 0; i <= Ne; i++) dataXSet.add(i * dx);
-            keyPoints.forEach(kp => {
-                if (kp >= 0 && kp <= L) {
-                    dataXSet.add(Math.max(0, kp - 1e-5));
-                    dataXSet.add(kp);
-                    dataXSet.add(Math.min(L, kp + 1e-5));
-                }
+            let sortedX = [];
+            nodes.forEach(n => {
+                if (n > 0) sortedX.push(n - 1e-6);
+                sortedX.push(n);
+                if (n < L) sortedX.push(n + 1e-6);
             });
-            let sortedX = Array.from(dataXSet).sort((a, b) => a - b).filter(x => x >= 0 && x <= L);
 
             let plots = { shear: [], moment: [], rotation: [], deflection: [] };
             sortedX.forEach(x => {
@@ -277,7 +332,7 @@
             );
         };
 
-        const ModelPlot = ({ L, supports, reactions, loadParams }) => {
+        const ModelPlot = ({ L, supports, reactions, segments }) => {
             const width = 600;
             const height = 150;
             const padding = { top: 50, bottom: 40, left: 40, right: 40 };
@@ -295,34 +350,37 @@
                                 <line x1={scaleX(0)} y1={beamY} x2={scaleX(L)} y2={beamY} stroke="#111827" strokeWidth="4" />
                                 
                                 {(() => {
-                                    const { x1, q1, x2, q2 } = loadParams;
-                                    if (q1 === 0 && q2 === 0) return null;
-                                    const maxQ = Math.max(Math.abs(q1), Math.abs(q2));
-                                    const loadScaleY = 40 / (maxQ || 1); 
-                                    
-                                    const p1x = scaleX(x1);
-                                    const p1y = beamY + q1 * loadScaleY; 
-                                    const p2x = scaleX(x2);
-                                    const p2y = beamY + q2 * loadScaleY;
+                                    if (!segments || segments.length === 0) return null;
+                                    let maxQ = 0;
+                                    segments.forEach(s => { maxQ = Math.max(maxQ, Math.abs(s.qa), Math.abs(s.qb)) });
+                                    const loadScaleY = maxQ > 0 ? 40 / maxQ : 1; 
 
-                                    return (
-                                        <g>
-                                            <polygon points={`${p1x},${beamY} ${p1x},${p1y} ${p2x},${p2y} ${p2x},${beamY}`} fill="rgba(239, 68, 68, 0.2)" stroke="#ef4444" strokeWidth="1" />
-                                            {Array.from({ length: 6 }).map((_, i) => {
-                                                const px = x1 + (x2 - x1) * (i / 5);
-                                                const pq = q1 + (q2 - q1) * (i / 5);
-                                                if (Math.abs(pq) < 1e-5) return null;
-                                                const ax = scaleX(px);
-                                                const ayStart = beamY + pq * loadScaleY;
-                                                return (
-                                                    <g key={i}>
-                                                        <line x1={ax} y1={ayStart} x2={ax} y2={beamY - Math.sign(pq)*3} stroke="#ef4444" strokeWidth="1.5" />
-                                                        <polygon points={`${ax-3},${beamY - Math.sign(pq)*8} ${ax+3},${beamY - Math.sign(pq)*8} ${ax},${beamY}`} fill="#ef4444" />
-                                                    </g>
-                                                );
-                                            })}
-                                        </g>
-                                    );
+                                    return segments.map((seg, idx) => {
+                                        if (Math.abs(seg.qa) < 1e-7 && Math.abs(seg.qb) < 1e-7) return null;
+                                        const p1x = scaleX(seg.xa);
+                                        const p1y = beamY + seg.qa * loadScaleY; 
+                                        const p2x = scaleX(seg.xb);
+                                        const p2y = beamY + seg.qb * loadScaleY;
+
+                                        return (
+                                            <g key={`load-seg-${idx}`}>
+                                                <polygon points={`${p1x},${beamY} ${p1x},${p1y} ${p2x},${p2y} ${p2x},${beamY}`} fill="rgba(239, 68, 68, 0.2)" stroke="#ef4444" strokeWidth="1" />
+                                                {Array.from({ length: 6 }).map((_, i) => {
+                                                    const px = seg.xa + (seg.xb - seg.xa) * (i / 5);
+                                                    const pq = seg.qa + (seg.qb - seg.qa) * (i / 5);
+                                                    if (Math.abs(pq) < 1e-5) return null;
+                                                    const ax = scaleX(px);
+                                                    const ayStart = beamY + pq * loadScaleY;
+                                                    return (
+                                                        <g key={`arrow-${idx}-${i}`}>
+                                                            <line x1={ax} y1={ayStart} x2={ax} y2={beamY - Math.sign(pq)*3} stroke="#ef4444" strokeWidth="1.5" />
+                                                            <polygon points={`${ax-3},${beamY - Math.sign(pq)*8} ${ax+3},${beamY - Math.sign(pq)*8} ${ax},${beamY}`} fill="#ef4444" />
+                                                        </g>
+                                                    );
+                                                })}
+                                            </g>
+                                        );
+                                    });
                                 })()}
 
                                 {supports.map((pos, i) => (
@@ -366,7 +424,7 @@
             const [supports, setSupports] = useState([12, 60]);
             
             const [loadType, setLoadType] = useState('triangular'); 
-            const [loadParams, setLoadParams] = useState({ x1: 0, q1: -0.18, x2: 75, q2: 0 });
+            const [loadParams, setLoadParams] = useState({ x1: 0, q1: -0.18, x2: 75, q2: 0, x3: 75, q3: 0 });
 
             const [results, setResults] = useState(null);
             const [error, setError] = useState('');
@@ -375,27 +433,42 @@
                 const type = e.target.value;
                 setLoadType(type);
                 if (type === 'uniform') {
-                    setLoadParams({ x1: 0, q1: -0.18, x2: length, q2: -0.18 });
+                    setLoadParams({ x1: 0, q1: -0.18, x2: length, q2: -0.18, x3: length, q3: 0 });
                 } else if (type === 'triangular') {
-                    setLoadParams({ x1: 0, q1: -0.18, x2: length, q2: 0 });
+                    setLoadParams({ x1: 0, q1: -0.18, x2: length, q2: 0, x3: length, q3: 0 });
                 } else if (type === 'trapezoidal') {
-                    setLoadParams({ x1: 0, q1: -0.18, x2: length, q2: -0.09 });
+                    // 預設為截圖形狀：一半均布，一半三角遞減
+                    setLoadParams({ x1: 0, q1: -0.18, x2: length / 2, q2: -0.18, x3: length, q3: 0 });
                 }
             };
 
             const handleAnalyze = () => {
                 setError('');
-                const res = analyzeBeam(parseFloat(length), parseFloat(E), parseFloat(I), supports.map(parseFloat), {
-                    x1: parseFloat(loadParams.x1),
-                    q1: parseFloat(loadParams.q1),
-                    x2: parseFloat(loadParams.x2),
-                    q2: parseFloat(loadParams.q2),
-                });
+                let segments = [];
+                if (loadType === 'trapezoidal') {
+                    segments = [
+                        { xa: parseFloat(loadParams.x1), qa: parseFloat(loadParams.q1), xb: parseFloat(loadParams.x2), qb: parseFloat(loadParams.q2) },
+                        { xa: parseFloat(loadParams.x2), qa: parseFloat(loadParams.q2), xb: parseFloat(loadParams.x3), qb: parseFloat(loadParams.q3) }
+                    ];
+                } else {
+                    segments = [
+                        { xa: parseFloat(loadParams.x1), qa: parseFloat(loadParams.q1), xb: parseFloat(loadParams.x2), qb: parseFloat(loadParams.q2) }
+                    ];
+                }
+                
+                // 排除長度為0或反轉的無效載重區段
+                segments = segments.map(seg => {
+                    if (seg.xa > seg.xb) return { xa: seg.xb, qa: seg.qb, xb: seg.xa, qb: seg.qa };
+                    return seg;
+                }).filter(seg => seg.xb > seg.xa);
+
+                const res = analyzeBeam(parseFloat(length), parseFloat(E), parseFloat(I), supports.map(parseFloat), segments);
                 
                 if (res.error) {
                     setError(res.error);
                     setResults(null);
                 } else {
+                    res.segments = segments;
                     setResults(res);
                 }
             };
@@ -463,26 +536,27 @@
                                 <select value={loadType} onChange={handleLoadTypeChange} className="w-full p-3 sm:p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none mb-4">
                                     <option value="triangular">三角形 (Triangular)</option>
                                     <option value="uniform">均布 (Uniform)</option>
-                                    <option value="trapezoidal">梯形 (Trapezoidal)</option>
+                                    <option value="trapezoidal">複合梯形 (均布+三角)</option>
                                 </select>
 
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-xs text-gray-500 mb-1">起始點 X1</label>
-                                        <input type="number" value={loadParams.x1} onChange={e => setLoadParams({...loadParams, x1: e.target.value})} className="w-full p-2.5 sm:p-2 border rounded text-sm" />
+                                <div className="space-y-3">
+                                    <div className="flex gap-2 items-center">
+                                        <span className="text-sm font-semibold text-gray-500 w-16">起點:</span>
+                                        <input type="number" placeholder="X1" value={loadParams.x1} onChange={e => setLoadParams({...loadParams, x1: e.target.value})} className="w-full p-2.5 sm:p-2 border rounded text-sm" />
+                                        <input type="number" step="0.01" placeholder="Q1" value={loadParams.q1} onChange={e => setLoadParams({...loadParams, q1: e.target.value})} className="w-full p-2.5 sm:p-2 border rounded text-sm" />
                                     </div>
-                                    <div>
-                                        <label className="block text-xs text-gray-500 mb-1">載重 Q1</label>
-                                        <input type="number" step="0.01" value={loadParams.q1} onChange={e => setLoadParams({...loadParams, q1: e.target.value})} className="w-full p-2.5 sm:p-2 border rounded text-sm" />
+                                    <div className="flex gap-2 items-center">
+                                        <span className="text-sm font-semibold text-gray-500 w-16">{loadType === 'trapezoidal' ? '轉折點:' : '終點:'}</span>
+                                        <input type="number" placeholder="X2" value={loadParams.x2} onChange={e => setLoadParams({...loadParams, x2: e.target.value})} className="w-full p-2.5 sm:p-2 border rounded text-sm" />
+                                        <input type="number" step="0.01" placeholder="Q2" value={loadParams.q2} onChange={e => setLoadParams({...loadParams, q2: e.target.value})} className="w-full p-2.5 sm:p-2 border rounded text-sm" />
                                     </div>
-                                    <div>
-                                        <label className="block text-xs text-gray-500 mb-1">結束點 X2</label>
-                                        <input type="number" value={loadParams.x2} onChange={e => setLoadParams({...loadParams, x2: e.target.value})} className="w-full p-2.5 sm:p-2 border rounded text-sm" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs text-gray-500 mb-1">載重 Q2</label>
-                                        <input type="number" step="0.01" value={loadParams.q2} onChange={e => setLoadParams({...loadParams, q2: e.target.value})} className="w-full p-2.5 sm:p-2 border rounded text-sm" />
-                                    </div>
+                                    {loadType === 'trapezoidal' && (
+                                        <div className="flex gap-2 items-center">
+                                            <span className="text-sm font-semibold text-gray-500 w-16">終點:</span>
+                                            <input type="number" placeholder="X3" value={loadParams.x3} onChange={e => setLoadParams({...loadParams, x3: e.target.value})} className="w-full p-2.5 sm:p-2 border rounded text-sm" />
+                                            <input type="number" step="0.01" placeholder="Q3" value={loadParams.q3} onChange={e => setLoadParams({...loadParams, q3: e.target.value})} className="w-full p-2.5 sm:p-2 border rounded text-sm" />
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -504,7 +578,7 @@
                         <div className="lg:col-span-8 bg-gray-50 rounded-xl flex flex-col gap-2 overflow-hidden py-4 sm:py-0">
                             {results ? (
                                 <>
-                                    <ModelPlot L={parseFloat(length)} supports={supports.map(parseFloat)} reactions={results.reactionResults} loadParams={loadParams} />
+                                    <ModelPlot L={parseFloat(length)} supports={supports.map(parseFloat)} reactions={results.reactionResults} segments={results.segments} />
                                     <PlotGraph title="剪力圖 (Shear)" data={results.plots.shear} unit="Consistent" />
                                     <PlotGraph title="彎矩圖 (Moment)" data={results.plots.moment} unit="Consistent" />
                                     <PlotGraph title="角度圖 (Rotation)" data={results.plots.rotation} unit="radians" fill={false} />
