@@ -1,552 +1,530 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>雙向房貸試算表</title>
-  
-  <!-- 載入 Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- 載入 React & ReactDOM -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  
-  <!-- 載入 Babel 以便在瀏覽器中編譯 JSX -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>梁變形分析系統</title>
+    <!-- 引入 React -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- 引入 Babel 用於瀏覽器內編譯 JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-  <div id="root"></div>
+<body class="bg-gray-50 text-gray-800 font-sans">
+    <div id="root"></div>
 
-  <script type="text/babel">
-    const { useState } = React;
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
 
-    // --- 內建圖示 (SVGs) 替換原本的 lucide-react ---
-    const Home = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>;
-    const Calculator = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>;
-    const Wallet = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a8 8 0 0 1-5-1.52"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg>;
-    const Percent = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="19" x2="5" y1="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>;
-    const Calendar = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>;
-    const DollarSign = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
-    const PiggyBank = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.7-1 2-2h2v-4h-2c0-1-.5-1.5-1-2V5z"/><path d="M2 9v1c0 1.1.9 2 2 2h1"/><path d="M16 11h.01"/></svg>;
-    const Hourglass = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/></svg>;
+        // --- SVG Icons 替換原本的 lucide-react ---
+        const ActivityIcon = () => (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+            </svg>
+        );
+        const PlusIcon = () => (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+        );
+        const TrashIcon = () => (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                <line x1="10" y1="11" x2="10" y2="17"></line>
+                <line x1="14" y1="11" x2="14" y2="17"></line>
+            </svg>
+        );
 
-    function App() {
-      const [activeTab, setActiveTab] = useState('byPrice');
+        // --- 核心分析演算法 (直接勁度法) ---
+        function solveLinearSystem(A, b) {
+            const n = b.length;
+            let aug = A.map((row, i) => [...row, b[i]]);
 
-      // State for Calculator 1 (By Price)
-      const [totalPrice, setTotalPrice] = useState(1500); // 單位：萬
-      const [rate1, setRate1] = useState(2.5); // 單位：%
-      const [ltv1, setLtv1] = useState(80); // 單位：% (成數)
-      const [years1, setYears1] = useState(30); // 單位：年
-      const [grace1, setGrace1] = useState(3); // 單位：年 (寬限期)
-      const [isNewYouth1, setIsNewYouth1] = useState(false); // 新青安選項
+            for (let i = 0; i < n; i++) {
+                let maxRow = i;
+                for (let j = i + 1; j < n; j++) {
+                    if (Math.abs(aug[j][i]) > Math.abs(aug[maxRow][i])) {
+                        maxRow = j;
+                    }
+                }
+                if (Math.abs(aug[maxRow][i]) < 1e-12) return null;
+                let temp = aug[i];
+                aug[i] = aug[maxRow];
+                aug[maxRow] = temp;
 
-      // State for Calculator 2 (By Monthly Payment)
-      const [monthlyPayment, setMonthlyPayment] = useState(40000); // 單位：元
-      const [rate2, setRate2] = useState(2.5); // 單位：%
-      const [ltv2, setLtv2] = useState(80); // 單位：% (成數)
-      const [years2, setYears2] = useState(30); // 單位：年
-      const [grace2, setGrace2] = useState(3); // 單位：年 (寬限期)
-      const [isNewYouth2, setIsNewYouth2] = useState(false); // 新青安選項
-
-      // 安全的數字格式化工具
-      const formatMoney = (num) => {
-        if (typeof num !== 'number' || isNaN(num) || !isFinite(num) || num < 0) return '0';
-        return Math.round(num).toLocaleString('zh-TW');
-      };
-
-      const formatWan = (num) => {
-        if (typeof num !== 'number' || isNaN(num) || !isFinite(num) || num < 0) return '0';
-        return (num / 10000).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-      };
-
-      // 安全的數字輸入處理
-      const handleNumberInput = (setter) => (e) => {
-        const val = e.target.value;
-        if (val === '') {
-          setter(''); 
-        } else {
-          const num = Number(val);
-          if (!isNaN(num) && num >= 0) setter(num);
+                for (let j = i + 1; j < n; j++) {
+                    let factor = aug[j][i] / aug[i][i];
+                    for (let k = i; k <= n; k++) {
+                        aug[j][k] -= factor * aug[i][k];
+                    }
+                }
+            }
+            let x = new Array(n).fill(0);
+            for (let i = n - 1; i >= 0; i--) {
+                let sum = 0;
+                for (let j = i + 1; j < n; j++) {
+                    sum += aug[i][j] * x[j];
+                }
+                x[i] = (aug[i][n] - sum) / aug[i][i];
+            }
+            return x;
         }
-      };
 
-      // 共用計算公式
-      const getMonthlyPMT = (principal, annualRate, months) => {
-        if (months <= 0) return 0;
-        if (annualRate === 0) return principal / months;
-        const r = annualRate / 100 / 12;
-        return (principal * r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1);
-      };
+        function analyzeBeam(L, E, I, supports, loadParams) {
+            const Ne = 100; // 元素數量
+            const dx = L / Ne;
+            const nDof = (Ne + 1) * 2;
 
-      const getPrincipalFromPMT = (pmt, annualRate, months) => {
-        if (months <= 0) return 0;
-        if (annualRate === 0) return pmt * months;
-        const r = annualRate / 100 / 12;
-        return (pmt * (Math.pow(1 + r, months) - 1)) / (r * Math.pow(1 + r, months));
-      };
+            let K = Array(nDof).fill(0).map(() => Array(nDof).fill(0));
+            let F = Array(nDof).fill(0);
 
-      // --- Calculations for Mode 1 (By Price) ---
-      const safeTotalPrice = Number(totalPrice) || 0;
-      const safeRate1 = Number(rate1) || 0;
-      
-      const loanAmount1 = (safeTotalPrice * 10000) * (ltv1 / 100);
-      const downPayment1 = (safeTotalPrice * 10000) - loanAmount1;
-      
-      let gracePayment1 = 0;
-      let normalPayment1 = 0;
-      let youthLoanAmount1 = 0;
-      let normalLoanAmount1 = loanAmount1;
-      const normalMonths1 = (years1 - grace1) * 12;
-      
-      if (normalMonths1 > 0) { 
-        if (isNewYouth1) {
-          const youthLimit = 10000000;
-          const youthRate = 1.775;
-          youthLoanAmount1 = Math.min(loanAmount1, youthLimit);
-          normalLoanAmount1 = Math.max(0, loanAmount1 - youthLimit);
-          
-          gracePayment1 = (youthLoanAmount1 * youthRate / 100 / 12) + (normalLoanAmount1 * safeRate1 / 100 / 12);
-          normalPayment1 = getMonthlyPMT(youthLoanAmount1, youthRate, normalMonths1) + getMonthlyPMT(normalLoanAmount1, safeRate1, normalMonths1);
-        } else {
-          if (safeRate1 === 0) {
-            normalPayment1 = loanAmount1 / normalMonths1;
-          } else {
-            const r1 = safeRate1 / 100 / 12;
-            gracePayment1 = loanAmount1 * r1;
-            normalPayment1 = getMonthlyPMT(loanAmount1, safeRate1, normalMonths1);
-          }
+            const ke = (E * I) / Math.pow(dx, 3);
+            const k_el = [
+                [12 * ke, 6 * dx * ke, -12 * ke, 6 * dx * ke],
+                [6 * dx * ke, 4 * dx * dx * ke, -6 * dx * ke, 2 * dx * dx * ke],
+                [-12 * ke, -6 * dx * ke, 12 * ke, -6 * dx * ke],
+                [6 * dx * ke, 2 * dx * dx * ke, -6 * dx * ke, 4 * dx * dx * ke]
+            ];
+
+            let { x1, q1, x2, q2 } = loadParams;
+            if (x1 > x2) {
+                [x1, x2] = [x2, x1];
+                [q1, q2] = [q2, q1];
+            }
+
+            const q_eval = (x) => {
+                if (x < x1 || x > x2) return 0;
+                if (Math.abs(x2 - x1) < 1e-7) return q1; 
+                return q1 + (q2 - q1) * (x - x1) / (x2 - x1);
+            };
+
+            for (let i = 0; i < Ne; i++) {
+                const xa = i * dx;
+                const xb = (i + 1) * dx;
+                const dofs = [2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 3];
+                
+                for (let r = 0; r < 4; r++) {
+                    for (let c = 0; c < 4; c++) {
+                        K[dofs[r]][dofs[c]] += k_el[r][c];
+                    }
+                }
+
+                const qa = q_eval(xa);
+                const qm = q_eval((xa + xb) / 2);
+                const qb = q_eval(xb);
+
+                const f1 = (dx / 6) * (1 * qa + 4 * 0.5 * qm + 0 * qb);
+                const m1 = (dx / 6) * (0 * qa + 4 * 0.125 * dx * qm + 0 * qb);
+                const f2 = (dx / 6) * (0 * qa + 4 * 0.5 * qm + 1 * qb);
+                const m2 = (dx / 6) * (0 * qa + 4 * -0.125 * dx * qm + 0 * qb);
+
+                F[2 * i] += f1;
+                F[2 * i + 1] += m1;
+                F[2 * i + 2] += f2;
+                F[2 * i + 3] += m2;
+            }
+
+            let K_mod = K.map(row => [...row]);
+            let F_mod = [...F];
+            let K_orig = K.map(row => [...row]); 
+
+            const validSupports = supports.filter(s => s >= 0 && s <= L);
+            const supportNodes = [...new Set(validSupports.map(pos => Math.max(0, Math.min(Ne, Math.round(pos / dx)))))];
+
+            supportNodes.forEach(node => {
+                const dof = node * 2;
+                for (let j = 0; j < nDof; j++) K_mod[dof][j] = 0;
+                K_mod[dof][dof] = 1;
+                F_mod[dof] = 0;
+            });
+
+            const U = solveLinearSystem(K_mod, F_mod);
+            if (!U) return { error: "結構不穩定！請確保有足夠的支承（至少需兩個不重疊的支承）。" };
+
+            let R = new Array(nDof).fill(0);
+            for (let i = 0; i < nDof; i++) {
+                let sum = 0;
+                for (let j = 0; j < nDof; j++) sum += K_orig[i][j] * U[j];
+                R[i] = sum - F[i]; 
+            }
+
+            const reactionResults = supportNodes.map(node => ({
+                x: node * dx,
+                force: R[node * 2]
+            })).filter(r => Math.abs(r.force) > 1e-10); 
+
+            const getV = (x) => {
+                let v = 0;
+                reactionResults.forEach(r => { if (r.x <= x + 1e-7) v += r.force; });
+                if (x > x1) {
+                    const end_x = Math.min(x, x2);
+                    const L_int = end_x - x1;
+                    const q_end = q1 + (q2 - q1) * L_int / (x2 - x1 || 1);
+                    v += 0.5 * (q1 + q_end) * L_int;
+                }
+                return v;
+            };
+
+            const getM = (x) => {
+                let m = 0;
+                reactionResults.forEach(r => { if (r.x <= x + 1e-7) m += r.force * (x - r.x); });
+                if (x > x1) {
+                    const end_x = Math.min(x, x2);
+                    const L_int = end_x - x1;
+                    const q_end = q1 + (q2 - q1) * L_int / (x2 - x1 || 1);
+                    const area = 0.5 * (q1 + q_end) * L_int;
+                    const centroid_from_x1 = L_int > 0 ? (L_int / 3) * (q1 + 2 * q_end) / (q1 + q_end || 1) : 0;
+                    m += area * (x - (x1 + centroid_from_x1));
+                }
+                return m;
+            };
+
+            const getDispAndRot = (x) => {
+                if (x <= 0) return { v: U[0], theta: U[1] };
+                if (x >= L) return { v: U[Ne * 2], theta: U[Ne * 2 + 1] };
+                const idx = Math.floor(x / dx);
+                const xi = (x - idx * dx) / dx;
+                const v1 = U[idx * 2], t1 = U[idx * 2 + 1];
+                const v2 = U[(idx + 1) * 2], t2 = U[(idx + 1) * 2 + 1];
+                const N1 = 1 - 3*xi*xi + 2*xi*xi*xi, N2 = dx * (xi - 2*xi*xi + xi*xi*xi);
+                const N3 = 3*xi*xi - 2*xi*xi*xi, N4 = dx * (xi*xi*xi - xi*xi);
+                const dN1 = (-6*xi + 6*xi*xi)/dx, dN2 = (1 - 4*xi + 3*xi*xi);
+                const dN3 = (6*xi - 6*xi*xi)/dx, dN4 = (3*xi*xi - 2*xi);
+                return { v: N1*v1 + N2*t1 + N3*v2 + N4*t2, theta: dN1*v1 + dN2*t1 + dN3*v2 + dN4*t2 };
+            };
+
+            let keyPoints = [0, L, x1, x2, ...validSupports];
+            let dataXSet = new Set();
+            for (let i = 0; i <= Ne; i++) dataXSet.add(i * dx);
+            keyPoints.forEach(kp => {
+                if (kp >= 0 && kp <= L) {
+                    dataXSet.add(Math.max(0, kp - 1e-5));
+                    dataXSet.add(kp);
+                    dataXSet.add(Math.min(L, kp + 1e-5));
+                }
+            });
+            let sortedX = Array.from(dataXSet).sort((a, b) => a - b).filter(x => x >= 0 && x <= L);
+
+            let plots = { shear: [], moment: [], rotation: [], deflection: [] };
+            sortedX.forEach(x => {
+                const { v, theta } = getDispAndRot(x);
+                plots.shear.push({ x, y: getV(x) });
+                plots.moment.push({ x, y: getM(x) });
+                plots.rotation.push({ x, y: -theta }); // 加上負號符合習慣
+                plots.deflection.push({ x, y: v });
+            });
+
+            return { reactionResults, plots };
         }
-      }
 
-      // --- Calculations for Mode 2 (By Monthly Payment) ---
-      const safeMonthlyPayment = Number(monthlyPayment) || 0;
-      const safeRate2 = Number(rate2) || 0;
-      
-      let loanAmount2 = 0;
-      let gracePayment2 = 0;
-      let youthLoanAmount2 = 0;
-      let normalLoanAmount2 = 0;
-      const normalMonths2 = (years2 - grace2) * 12;
+        // --- SVG 繪圖元件 ---
+        const PlotGraph = ({ title, data, unit, fill = true }) => {
+            if (!data || data.length === 0) return null;
 
-      if (normalMonths2 > 0) { 
-        if (isNewYouth2) {
-          const youthLimit = 10000000;
-          const youthRate = 1.775;
-          const maxYouthPMT = getMonthlyPMT(youthLimit, youthRate, normalMonths2);
+            const width = 600;
+            const height = 180;
+            const padding = { top: 30, bottom: 20, left: 40, right: 40 };
+            const innerWidth = width - padding.left - padding.right;
+            const innerHeight = height - padding.top - padding.bottom;
 
-          if (safeMonthlyPayment <= maxYouthPMT) {
-            loanAmount2 = getPrincipalFromPMT(safeMonthlyPayment, youthRate, normalMonths2);
-            youthLoanAmount2 = loanAmount2;
-            gracePayment2 = loanAmount2 * youthRate / 100 / 12;
-          } else {
-            const remainingPMT = safeMonthlyPayment - maxYouthPMT;
-            normalLoanAmount2 = getPrincipalFromPMT(remainingPMT, safeRate2, normalMonths2);
-            youthLoanAmount2 = youthLimit;
-            loanAmount2 = youthLimit + normalLoanAmount2;
-            gracePayment2 = (youthLimit * youthRate / 100 / 12) + (normalLoanAmount2 * safeRate2 / 100 / 12);
-          }
-        } else {
-          if (safeRate2 === 0) {
-            loanAmount2 = safeMonthlyPayment * normalMonths2;
-          } else {
-            loanAmount2 = getPrincipalFromPMT(safeMonthlyPayment, safeRate2, normalMonths2);
-            gracePayment2 = loanAmount2 * safeRate2 / 100 / 12;
-          }
-        }
-      }
-      
-      const calculatedTotalPrice2 = ltv2 > 0 ? loanAmount2 / (ltv2 / 100) : 0;
-      const downPayment2 = Math.max(0, calculatedTotalPrice2 - loanAmount2);
+            const minX = Math.min(...data.map(d => d.x));
+            const maxX = Math.max(...data.map(d => d.x));
+            let minY = Math.min(...data.map(d => d.y));
+            let maxY = Math.max(...data.map(d => d.y));
 
-      return (
-        <div className="min-h-screen bg-slate-50 p-3 sm:p-4 md:p-8 font-sans text-slate-800">
-          <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
+            if (minY === maxY) {
+                minY -= 1; maxY += 1;
+            }
+
+            const scaleX = x => padding.left + ((x - minX) / (maxX - minX)) * innerWidth;
+            const scaleY = y => padding.top + innerHeight - ((y - minY) / (maxY - minY)) * innerHeight;
+            const zeroY = scaleY(Math.max(minY, Math.min(maxY, 0))); 
+
+            const pathData = data.map((d, i) => `${i === 0 ? 'M' : 'L'} ${scaleX(d.x)} ${scaleY(d.y)}`).join(' ');
+            const fillData = `${pathData} L ${scaleX(data[data.length-1].x)} ${zeroY} L ${scaleX(data[0].x)} ${zeroY} Z`;
+
+            const maxPoint = data.reduce((p, c) => c.y > p.y ? c : p, data[0]);
+            const minPoint = data.reduce((p, c) => c.y < p.y ? c : p, data[0]);
+
+            return (
+                <div className="mb-6 flex flex-col items-center w-full">
+                    <h3 className="text-gray-700 font-bold mb-2 text-sm self-start pl-4">{title} {unit && <span className="text-gray-500 font-normal">({unit})</span>}</h3>
+                    {/* 加入 overflow-x-auto 讓手機版圖表不會擠壓，可左右滑動 */}
+                    <div className="w-full overflow-x-auto pb-2 px-2">
+                        <div className="min-w-[450px]">
+                            <svg width="100%" viewBox={`0 0 ${width} ${height}`} className="bg-white border rounded shadow-sm" preserveAspectRatio="xMidYMid meet">
+                                <line x1={padding.left} y1={zeroY} x2={width - padding.right} y2={zeroY} stroke="#9ca3af" strokeWidth="1" />
+                                {fill && <path d={fillData} fill="rgba(59, 130, 246, 0.15)" stroke="none" />}
+                                <path d={pathData} fill="none" stroke="#2563eb" strokeWidth="2" strokeLinejoin="round" />
+                                {Math.abs(maxY) > 1e-10 && (
+                                    <text x={scaleX(maxPoint.x)} y={scaleY(maxPoint.y) - 8} fontSize="12" fill="#1e3a8a" textAnchor="middle" className="font-semibold">
+                                        {maxPoint.y.toFixed(6)}
+                                    </text>
+                                )}
+                                {Math.abs(minY) > 1e-10 && (
+                                    <text x={scaleX(minPoint.x)} y={scaleY(minPoint.y) + 16} fontSize="12" fill="#991b1b" textAnchor="middle" className="font-semibold">
+                                        {minPoint.y.toFixed(6)}
+                                    </text>
+                                )}
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const ModelPlot = ({ L, supports, reactions, loadParams }) => {
+            const width = 600;
+            const height = 150;
+            const padding = { top: 50, bottom: 40, left: 40, right: 40 };
+            const innerWidth = width - padding.left - padding.right;
+            const beamY = height - padding.bottom;
+
+            const scaleX = x => padding.left + (x / L) * innerWidth;
+
+            return (
+                <div className="mb-6 flex flex-col items-center w-full">
+                    <h3 className="text-gray-700 font-bold mb-2 text-sm self-start pl-4">反力與模型圖 (Reactions)</h3>
+                    <div className="w-full overflow-x-auto pb-2 px-2">
+                        <div className="min-w-[450px]">
+                            <svg width="100%" viewBox={`0 0 ${width} ${height}`} className="bg-white border rounded shadow-sm" preserveAspectRatio="xMidYMid meet">
+                                <line x1={scaleX(0)} y1={beamY} x2={scaleX(L)} y2={beamY} stroke="#111827" strokeWidth="4" />
+                                
+                                {(() => {
+                                    const { x1, q1, x2, q2 } = loadParams;
+                                    if (q1 === 0 && q2 === 0) return null;
+                                    const maxQ = Math.max(Math.abs(q1), Math.abs(q2));
+                                    const loadScaleY = 40 / (maxQ || 1); 
+                                    
+                                    const p1x = scaleX(x1);
+                                    const p1y = beamY + q1 * loadScaleY; 
+                                    const p2x = scaleX(x2);
+                                    const p2y = beamY + q2 * loadScaleY;
+
+                                    return (
+                                        <g>
+                                            <polygon points={`${p1x},${beamY} ${p1x},${p1y} ${p2x},${p2y} ${p2x},${beamY}`} fill="rgba(239, 68, 68, 0.2)" stroke="#ef4444" strokeWidth="1" />
+                                            {Array.from({ length: 6 }).map((_, i) => {
+                                                const px = x1 + (x2 - x1) * (i / 5);
+                                                const pq = q1 + (q2 - q1) * (i / 5);
+                                                if (Math.abs(pq) < 1e-5) return null;
+                                                const ax = scaleX(px);
+                                                const ayStart = beamY + pq * loadScaleY;
+                                                return (
+                                                    <g key={i}>
+                                                        <line x1={ax} y1={ayStart} x2={ax} y2={beamY - Math.sign(pq)*3} stroke="#ef4444" strokeWidth="1.5" />
+                                                        <polygon points={`${ax-3},${beamY - Math.sign(pq)*8} ${ax+3},${beamY - Math.sign(pq)*8} ${ax},${beamY}`} fill="#ef4444" />
+                                                    </g>
+                                                );
+                                            })}
+                                        </g>
+                                    );
+                                })()}
+
+                                {supports.map((pos, i) => (
+                                    <polygon key={`sup-${i}`} points={`${scaleX(pos)},${beamY} ${scaleX(pos)-8},${beamY+12} ${scaleX(pos)+8},${beamY+12}`} fill="#4b5563" />
+                                ))}
+
+                                {reactions && reactions.map((r, i) => {
+                                    const rx = scaleX(r.x);
+                                    const isUp = r.force > 0;
+                                    const lineEnd = isUp ? beamY + 15 : beamY - 15;
+                                    const lineStart = isUp ? lineEnd + 25 : lineEnd - 25;
+                                    
+                                    return (
+                                        <g key={`rx-${i}`}>
+                                            <line x1={rx} y1={lineStart} x2={rx} y2={lineEnd} stroke="#059669" strokeWidth="2" />
+                                            <polygon 
+                                                points={`${rx-4},${lineEnd + (isUp?6:-6)} ${rx+4},${lineEnd + (isUp?6:-6)} ${rx},${lineEnd}`} 
+                                                fill="#059669" 
+                                            />
+                                            <text x={rx} y={isUp ? lineStart + 15 : lineStart - 5} fontSize="12" fill="#059669" textAnchor="middle" className="font-bold">
+                                                {r.force.toFixed(4)}
+                                            </text>
+                                            <text x={rx} y={beamY + 30} fontSize="10" fill="#6b7280" textAnchor="middle">
+                                                X={r.x.toFixed(1)}
+                                            </text>
+                                        </g>
+                                    );
+                                })}
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 主應用程式 ---
+        function App() {
+            const [length, setLength] = useState(75);
+            const [E, setE] = useState(50000);
+            const [I, setI] = useState(0.281);
+            const [supports, setSupports] = useState([12, 60]);
             
-            {/* Header */}
-            <div className="text-center space-y-1 sm:space-y-2 pt-2 sm:pt-0">
-              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 flex items-center justify-center gap-2">
-                <Home className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
-                雙向房貸試算表
-              </h1>
-              <p className="text-sm sm:text-base text-slate-500">包含寬限期功能，精準評估買房預算</p>
-            </div>
+            const [loadType, setLoadType] = useState('triangular'); 
+            const [loadParams, setLoadParams] = useState({ x1: 0, q1: -0.18, x2: 75, q2: 0 });
 
-            {/* Tabs */}
-            <div className="flex rounded-xl bg-slate-200 p-1">
-              <button
-                onClick={() => setActiveTab('byPrice')}
-                className={`flex-1 py-3 px-2 text-xs sm:text-sm md:text-base rounded-lg font-medium transition-all truncate ${
-                  activeTab === 'byPrice'
-                    ? 'bg-white text-blue-600 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-300'
-                }`}
-              >
-                以「總房價」推算
-              </button>
-              <button
-                onClick={() => setActiveTab('byMonthly')}
-                className={`flex-1 py-3 px-2 text-xs sm:text-sm md:text-base rounded-lg font-medium transition-all truncate ${
-                  activeTab === 'byMonthly'
-                    ? 'bg-white text-blue-600 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-300'
-                }`}
-              >
-                以「月繳款」推算
-              </button>
-            </div>
+            const [results, setResults] = useState(null);
+            const [error, setError] = useState('');
 
-            {/* Calculator 1: By Price */}
-            {activeTab === 'byPrice' && (
-              <div className="grid lg:grid-cols-2 gap-4 sm:gap-6">
-                <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4 sm:space-y-5">
-                  <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 mb-2 sm:mb-4">
-                    <Calculator className="w-5 h-5 text-blue-500" />
-                    輸入條件
-                  </h2>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">總房價 (萬元)</label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <DollarSign className="w-5 h-5 text-slate-400" />
-                      </div>
-                      <input
-                        type="number" min="0"
-                        value={totalPrice}
-                        onChange={handleNumberInput(setTotalPrice)}
-                        className="w-full pl-10 pr-4 py-2 text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                        placeholder="請輸入總房價"
-                      />
-                    </div>
-                  </div>
+            const handleLoadTypeChange = (e) => {
+                const type = e.target.value;
+                setLoadType(type);
+                if (type === 'uniform') {
+                    setLoadParams({ x1: 0, q1: -0.18, x2: length, q2: -0.18 });
+                } else if (type === 'triangular') {
+                    setLoadParams({ x1: 0, q1: -0.18, x2: length, q2: 0 });
+                } else if (type === 'trapezoidal') {
+                    setLoadParams({ x1: 0, q1: -0.18, x2: length, q2: -0.09 });
+                }
+            };
 
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">貸款成數 (%)</label>
-                    <div className="relative flex items-center gap-3 sm:gap-4">
-                      <input
-                        type="range"
-                        min="10" max="100" step="5"
-                        value={ltv1}
-                        onChange={(e) => setLtv1(Number(e.target.value))}
-                        className="flex-1 min-w-0"
-                      />
-                      <span className="w-14 sm:w-16 text-center text-sm sm:text-base font-semibold bg-slate-100 py-1 rounded-md">{ltv1}%</span>
-                    </div>
-                  </div>
+            const handleAnalyze = () => {
+                setError('');
+                const res = analyzeBeam(parseFloat(length), parseFloat(E), parseFloat(I), supports.map(parseFloat), {
+                    x1: parseFloat(loadParams.x1),
+                    q1: parseFloat(loadParams.q1),
+                    x2: parseFloat(loadParams.x2),
+                    q2: parseFloat(loadParams.q2),
+                });
+                
+                if (res.error) {
+                    setError(res.error);
+                    setResults(null);
+                } else {
+                    setResults(res);
+                }
+            };
 
-                  <div className="flex items-center justify-between p-3 bg-blue-50/50 border border-blue-100 rounded-lg">
-                    <div>
-                      <span className="text-sm font-medium text-slate-800">套用「新青安」貸款</span>
-                      <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5">額度上限 1,000 萬，利率固定 1.775%</p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" checked={isNewYouth1} onChange={(e) => setIsNewYouth1(e.target.checked)} className="sr-only peer" />
-                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
-                    </label>
-                  </div>
+            useEffect(() => { handleAnalyze(); }, []);
 
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      {isNewYouth1 ? '一般貸款利率 (%)' : '貸款利率 (%)'}
-                      {isNewYouth1 && <span className="text-[10px] text-slate-400 font-normal ml-1">*超過1000萬部分適用</span>}
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Percent className="w-5 h-5 text-slate-400" />
-                      </div>
-                      <input
-                        type="number" min="0" max="100" step="0.01"
-                        value={rate1}
-                        onChange={handleNumberInput(setRate1)}
-                        className="w-full pl-10 pr-4 py-2 text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                      />
-                    </div>
-                  </div>
+            return (
+                <div className="min-h-screen bg-gray-50 text-gray-800 p-4 md:p-8 flex justify-center">
+                    <div className="max-w-6xl w-full grid grid-cols-1 lg:grid-cols-12 gap-8">
+                        
+                        {/* 左側：控制面板 */}
+                        <div className="lg:col-span-4 bg-white p-5 sm:p-6 rounded-xl shadow-md border border-gray-100 flex flex-col gap-6 h-fit">
+                            <div className="flex items-center gap-2 border-b pb-4">
+                                <div className="text-blue-600"><ActivityIcon /></div>
+                                <h2 className="text-xl font-bold text-gray-800">變形分析設定</h2>
+                            </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">貸款年限</label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <Calendar className="w-4 h-4 text-slate-400" />
+                            {/* 響應式 Grid：手機單欄，大螢幕雙欄 */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">梁總長 (L)</label>
+                                    <input type="number" value={length} onChange={(e) => setLength(e.target.value)} className="w-full p-2.5 sm:p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none transition" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">楊氏模數 (E)</label>
+                                    <input type="number" value={E} onChange={(e) => setE(e.target.value)} className="w-full p-2.5 sm:p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none transition" />
+                                </div>
+                                <div className="col-span-1 sm:col-span-2">
+                                    <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">慣性矩 (I)</label>
+                                    <input type="number" step="0.001" value={I} onChange={(e) => setI(e.target.value)} className="w-full p-2.5 sm:p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none transition" />
+                                </div>
+                            </div>
+
+                            <div className="border-t pt-4">
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="text-xs font-semibold text-gray-500 uppercase">支承位置 (Supports)</label>
+                                    <button onClick={() => setSupports([...supports, length / 2])} className="text-blue-600 hover:bg-blue-50 px-2 py-1.5 rounded transition flex items-center text-sm">
+                                        <PlusIcon /> <span className="ml-1">新增</span>
+                                    </button>
+                                </div>
+                                <div className="flex flex-col gap-3">
+                                    {supports.map((sup, idx) => (
+                                        <div key={idx} className="flex items-center gap-2">
+                                            <span className="text-gray-400 text-sm font-semibold">X =</span>
+                                            <input 
+                                                type="number" 
+                                                value={sup} 
+                                                onChange={(e) => {
+                                                    const newSups = [...supports];
+                                                    newSups[idx] = e.target.value;
+                                                    setSupports(newSups);
+                                                }} 
+                                                className="w-full p-2.5 sm:p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none" 
+                                            />
+                                            <button onClick={() => setSupports(supports.filter((_, i) => i !== idx))} className="text-red-500 hover:bg-red-50 p-2.5 sm:p-2 rounded">
+                                                <TrashIcon />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="border-t pt-4">
+                                <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">載重形式</label>
+                                <select value={loadType} onChange={handleLoadTypeChange} className="w-full p-3 sm:p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none mb-4">
+                                    <option value="triangular">三角形 (Triangular)</option>
+                                    <option value="uniform">均布 (Uniform)</option>
+                                    <option value="trapezoidal">梯形 (Trapezoidal)</option>
+                                </select>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs text-gray-500 mb-1">起始點 X1</label>
+                                        <input type="number" value={loadParams.x1} onChange={e => setLoadParams({...loadParams, x1: e.target.value})} className="w-full p-2.5 sm:p-2 border rounded text-sm" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-gray-500 mb-1">載重 Q1</label>
+                                        <input type="number" step="0.01" value={loadParams.q1} onChange={e => setLoadParams({...loadParams, q1: e.target.value})} className="w-full p-2.5 sm:p-2 border rounded text-sm" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-gray-500 mb-1">結束點 X2</label>
+                                        <input type="number" value={loadParams.x2} onChange={e => setLoadParams({...loadParams, x2: e.target.value})} className="w-full p-2.5 sm:p-2 border rounded text-sm" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-gray-500 mb-1">載重 Q2</label>
+                                        <input type="number" step="0.01" value={loadParams.q2} onChange={e => setLoadParams({...loadParams, q2: e.target.value})} className="w-full p-2.5 sm:p-2 border rounded text-sm" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button 
+                                onClick={handleAnalyze} 
+                                className="w-full py-3 sm:py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow transition mt-2 text-lg sm:text-base"
+                            >
+                                執行分析
+                            </button>
+
+                            {error && (
+                                <div className="p-3 bg-red-100 text-red-700 text-sm rounded border border-red-200">
+                                    {error}
+                                </div>
+                            )}
                         </div>
-                        <select
-                          value={years1}
-                          onChange={(e) => setYears1(Number(e.target.value))}
-                          className="w-full pl-9 pr-2 py-2 text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none appearance-none bg-white"
-                        >
-                          <option value="20">20 年</option>
-                          <option value="30">30 年</option>
-                          <option value="40">40 年</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">寬限期</label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <Hourglass className="w-4 h-4 text-slate-400" />
+
+                        {/* 右側：分析結果圖表 */}
+                        <div className="lg:col-span-8 bg-gray-50 rounded-xl flex flex-col gap-2 overflow-hidden py-4 sm:py-0">
+                            {results ? (
+                                <>
+                                    <ModelPlot L={parseFloat(length)} supports={supports.map(parseFloat)} reactions={results.reactionResults} loadParams={loadParams} />
+                                    <PlotGraph title="剪力圖 (Shear)" data={results.plots.shear} unit="Consistent" />
+                                    <PlotGraph title="彎矩圖 (Moment)" data={results.plots.moment} unit="Consistent" />
+                                    <PlotGraph title="角度圖 (Rotation)" data={results.plots.rotation} unit="radians" fill={false} />
+                                    <PlotGraph title="變形圖 (Deflection)" data={results.plots.deflection} unit="Consistent" />
+                                </>
+                            ) : (
+                                <div className="flex-1 flex items-center justify-center text-gray-400 min-h-[300px] border-2 border-dashed border-gray-300 rounded-xl bg-white">
+                                    請點擊左側「執行分析」以顯示結果
+                                </div>
+                            )}
                         </div>
-                        <select
-                          value={grace1}
-                          onChange={(e) => setGrace1(Number(e.target.value))}
-                          className="w-full pl-9 pr-2 py-2 text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none appearance-none bg-white"
-                        >
-                          <option value="0">無寬限期</option>
-                          <option value="1">1 年</option>
-                          <option value="2">2 年</option>
-                          <option value="3">3 年</option>
-                          <option value="4">4 年</option>
-                          <option value="5">5 年</option>
-                        </select>
-                      </div>
+
                     </div>
-                  </div>
                 </div>
+            );
+        }
 
-                <div className="bg-blue-600 text-white p-4 sm:p-6 rounded-2xl shadow-lg space-y-4 sm:space-y-5 flex flex-col justify-center">
-                  <h2 className="text-lg sm:text-xl font-semibold opacity-90 text-center">計算結果</h2>
-                  
-                  <div className="bg-blue-700/50 p-3 sm:p-4 rounded-xl border border-blue-500/30 flex flex-col gap-2 sm:gap-3">
-                    {grace1 > 0 ? (
-                      <React.Fragment>
-                        <div className="flex justify-between items-end border-b border-blue-500/50 pb-2 sm:pb-3">
-                          <div>
-                            <p className="text-blue-200 text-xs sm:text-sm mb-1 flex items-center gap-1">
-                              <Hourglass className="w-3 h-3 sm:w-4 sm:h-4" /> 前 {grace1} 年 (寬限期)
-                            </p>
-                            <p className="text-[10px] sm:text-xs text-blue-300">每月僅繳利息</p>
-                          </div>
-                          <p className="text-2xl sm:text-3xl font-bold truncate">
-                            <span className="text-sm sm:text-lg mr-1 font-normal">NT$</span>
-                            {formatMoney(gracePayment1)}
-                          </p>
-                        </div>
-                        <div className="flex justify-between items-end pt-1">
-                          <div>
-                            <p className="text-blue-100 text-xs sm:text-sm mb-1 flex items-center gap-1">
-                              <Calendar className="w-3 h-3 sm:w-4 sm:h-4" /> 第 {grace1 + 1} 年起
-                            </p>
-                            <p className="text-[10px] sm:text-xs text-blue-300">本息平均攤還</p>
-                          </div>
-                          <p className="text-2xl sm:text-3xl font-bold truncate">
-                            <span className="text-sm sm:text-lg mr-1 font-normal">NT$</span>
-                            {formatMoney(normalPayment1)}
-                          </p>
-                        </div>
-                      </React.Fragment>
-                    ) : (
-                      <div className="text-center py-1 sm:py-2">
-                        <p className="text-blue-100 text-sm mb-1 flex justify-center items-center gap-2">
-                          <Calendar className="w-4 h-4" /> 每月應繳金額
-                        </p>
-                        <p className="text-3xl sm:text-4xl font-bold mt-1 sm:mt-2 truncate">
-                          <span className="text-xl sm:text-2xl mr-1 font-normal">NT$</span>
-                          {formatMoney(normalPayment1)}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                    <div className="bg-white/10 p-3 sm:p-4 rounded-xl">
-                      <p className="text-blue-100 text-xs sm:text-sm mb-1 flex items-center gap-1 sm:gap-2">
-                        <Wallet className="w-3 h-3 sm:w-4 sm:h-4" /> 房貸總額
-                      </p>
-                      <p className="text-lg sm:text-xl lg:text-2xl font-bold truncate">
-                        {formatWan(loanAmount1)}<span className="text-xs sm:text-sm font-normal ml-1">萬元</span>
-                      </p>
-                      {isNewYouth1 && loanAmount1 > 10000000 ? (
-                        <p className="text-[10px] sm:text-xs text-blue-200 mt-1 truncate">(含青安1000萬 + 一般{formatWan(normalLoanAmount1)}萬)</p>
-                      ) : (
-                        <p className="text-[10px] sm:text-xs text-blue-200 mt-1 truncate">({formatMoney(loanAmount1)} 元)</p>
-                      )}
-                    </div>
-                    
-                    <div className="bg-white/10 p-3 sm:p-4 rounded-xl">
-                      <p className="text-blue-100 text-xs sm:text-sm mb-1 flex items-center gap-1 sm:gap-2">
-                        <PiggyBank className="w-3 h-3 sm:w-4 sm:h-4" /> 頭期款準備
-                      </p>
-                      <p className="text-lg sm:text-xl lg:text-2xl font-bold truncate">
-                        {formatWan(downPayment1)}<span className="text-xs sm:text-sm font-normal ml-1">萬元</span>
-                      </p>
-                      <p className="text-[10px] sm:text-xs text-blue-200 mt-1 truncate">({formatMoney(downPayment1)} 元)</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Calculator 2: By Monthly Payment */}
-            {activeTab === 'byMonthly' && (
-              <div className="grid lg:grid-cols-2 gap-4 sm:gap-6">
-                <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4 sm:space-y-5">
-                  <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 mb-2 sm:mb-4">
-                    <Calculator className="w-5 h-5 text-emerald-500" />
-                    輸入條件
-                  </h2>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      能負擔最高月繳款 (元) <span className="text-[10px] sm:text-xs text-slate-400 font-normal ml-1">*寬限期後</span>
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <DollarSign className="w-5 h-5 text-slate-400" />
-                      </div>
-                      <input
-                        type="number" min="0" step="1000"
-                        value={monthlyPayment}
-                        onChange={handleNumberInput(setMonthlyPayment)}
-                        className="w-full pl-10 pr-4 py-2 text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">預計貸款成數 (%)</label>
-                    <div className="relative flex items-center gap-3 sm:gap-4">
-                      <input
-                        type="range" min="10" max="100" step="5"
-                        value={ltv2}
-                        onChange={(e) => setLtv2(Number(e.target.value))}
-                        className="flex-1 accent-emerald-500 min-w-0"
-                      />
-                      <span className="w-14 sm:w-16 text-center text-sm sm:text-base font-semibold bg-slate-100 py-1 rounded-md">{ltv2}%</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between p-3 bg-emerald-50/50 border border-emerald-100 rounded-lg">
-                    <div>
-                      <span className="text-sm font-medium text-slate-800">套用「新青安」貸款</span>
-                      <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5">額度上限 1,000 萬，利率固定 1.775%</p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" checked={isNewYouth2} onChange={(e) => setIsNewYouth2(e.target.checked)} className="sr-only peer" />
-                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
-                    </label>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      {isNewYouth2 ? '一般貸款利率 (%)' : '貸款利率 (%)'}
-                      {isNewYouth2 && <span className="text-[10px] text-slate-400 font-normal ml-1">*超過1000萬部分適用</span>}
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Percent className="w-5 h-5 text-slate-400" />
-                      </div>
-                      <input
-                        type="number" min="0" max="100" step="0.01"
-                        value={rate2}
-                        onChange={handleNumberInput(setRate2)}
-                        className="w-full pl-10 pr-4 py-2 text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">貸款年限</label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <Calendar className="w-4 h-4 text-slate-400" />
-                        </div>
-                        <select
-                          value={years2}
-                          onChange={(e) => setYears2(Number(e.target.value))}
-                          className="w-full pl-9 pr-2 py-2 text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none appearance-none bg-white"
-                        >
-                          <option value="20">20 年</option>
-                          <option value="30">30 年</option>
-                          <option value="40">40 年</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">寬限期</label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <Hourglass className="w-4 h-4 text-slate-400" />
-                        </div>
-                        <select
-                          value={grace2}
-                          onChange={(e) => setGrace2(Number(e.target.value))}
-                          className="w-full pl-9 pr-2 py-2 text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none appearance-none bg-white"
-                        >
-                          <option value="0">無寬限期</option>
-                          <option value="1">1 年</option>
-                          <option value="2">2 年</option>
-                          <option value="3">3 年</option>
-                          <option value="4">4 年</option>
-                          <option value="5">5 年</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-emerald-600 text-white p-4 sm:p-6 rounded-2xl shadow-lg space-y-4 sm:space-y-5 flex flex-col justify-center">
-                  <h2 className="text-lg sm:text-xl font-semibold opacity-90 text-center">計算結果</h2>
-                  
-                  <div className="bg-emerald-700/50 p-3 sm:p-4 rounded-xl border border-emerald-500/30">
-                    <p className="text-emerald-100 text-sm mb-1 flex items-center gap-2">
-                      <Home className="w-4 h-4" /> 可購買總房價約
-                    </p>
-                    <p className="text-3xl sm:text-4xl font-bold text-center my-1 sm:my-2 truncate">
-                      {formatWan(calculatedTotalPrice2)}
-                      <span className="text-lg sm:text-xl font-normal ml-1 sm:ml-2">萬元</span>
-                    </p>
-                    {grace2 > 0 && (
-                      <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-emerald-500/50 flex flex-col sm:flex-row justify-between sm:items-center text-xs sm:text-sm gap-1">
-                        <span className="text-emerald-200">前 {grace2} 年寬限期每月只需繳:</span>
-                        <span className="font-bold text-base sm:text-lg">NT$ {formatMoney(gracePayment2)}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                    <div className="bg-white/10 p-3 sm:p-4 rounded-xl">
-                      <p className="text-emerald-100 text-xs sm:text-sm mb-1 flex items-center gap-1 sm:gap-2">
-                        <Wallet className="w-3 h-3 sm:w-4 sm:h-4" /> 房貸總額
-                      </p>
-                      <p className="text-lg sm:text-xl lg:text-2xl font-bold truncate">
-                        {formatWan(loanAmount2)}<span className="text-xs sm:text-sm font-normal ml-1">萬元</span>
-                      </p>
-                      {isNewYouth2 && loanAmount2 > 10000000 ? (
-                        <p className="text-[10px] sm:text-xs text-emerald-200 mt-1 truncate">(含青安1000萬 + 一般{formatWan(normalLoanAmount2)}萬)</p>
-                      ) : (
-                        <p className="text-[10px] sm:text-xs text-emerald-200 mt-1 truncate">({formatMoney(loanAmount2)} 元)</p>
-                      )}
-                    </div>
-                    
-                    <div className="bg-white/10 p-3 sm:p-4 rounded-xl">
-                      <p className="text-emerald-100 text-xs sm:text-sm mb-1 flex items-center gap-1 sm:gap-2">
-                        <PiggyBank className="w-3 h-3 sm:w-4 sm:h-4" /> 頭期款準備
-                      </p>
-                      <p className="text-lg sm:text-xl lg:text-2xl font-bold truncate">
-                        {formatWan(downPayment2)}<span className="text-xs sm:text-sm font-normal ml-1">萬元</span>
-                      </p>
-                      <p className="text-[10px] sm:text-xs text-emerald-200 mt-1 truncate">({formatMoney(downPayment2)} 元)</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="text-center text-xs sm:text-sm text-slate-400 mt-6 sm:mt-8 space-y-1 pb-4">
-              <p>註：此試算採本息平均攤還法計算，實際核貸金額與利率以各家銀行規定為準。</p>
-              <p>本工具所有運算皆於設備端執行，無資料外洩風險，請安心使用。</p>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
-  </script>
+        // 將 App 渲染到畫面上
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
 </body>
 </html>
